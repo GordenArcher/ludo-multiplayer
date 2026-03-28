@@ -1,37 +1,128 @@
-import React from "react";
-import { cellPos } from "../../utils/boardLogic";
+import React, { useRef, useState, useEffect } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
+import { getTokenWorldPosition } from "../../utils/tokenPositions";
+import type { PlayerColor } from "../../types/game";
 
 interface TokenProps {
-  row: number;
-  col: number;
-  color: string;
-  emissive: string;
+  tokenId: number;
+  color: PlayerColor;
+  position: number;
+  isFinished: boolean;
+  tokenIndex: number;
+  isInteractive: boolean;
+  isSelected: boolean;
+  isValidMove: boolean;
+  onClick: () => void;
 }
 
-const Token: React.FC<TokenProps> = ({ row, col, color, emissive }) => {
-  const [x, , z] = cellPos(row, col);
+const Token: React.FC<TokenProps> = ({
+  tokenId,
+  color,
+  position,
+  isFinished,
+  tokenIndex,
+  isInteractive,
+  isSelected,
+  isValidMove,
+  onClick,
+}) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const [hovered, setHovered] = useState(false);
+
+  // Update position when game state changes
+  useEffect(() => {
+    if (groupRef.current) {
+      const worldPos = getTokenWorldPosition(position, color, tokenIndex);
+      groupRef.current.position.set(worldPos.x, worldPos.y, worldPos.z);
+    }
+  }, [position, color, tokenIndex]);
+
+  // Idle animation
+  useFrame(({ clock }) => {
+    if (groupRef.current && !isSelected && !hovered && !isFinished) {
+      const t = clock.getElapsedTime();
+      const idleY = Math.sin(t * 2) * 0.003;
+      groupRef.current.position.y = 0.08 + idleY;
+    }
+  });
+
+  const themeColors: Record<PlayerColor, { primary: string; glow: string }> = {
+    red: { primary: "#ef4444", glow: "#991b1b" },
+    green: { primary: "#22c55e", glow: "#166534" },
+    yellow: { primary: "#eab308", glow: "#78350f" },
+    blue: { primary: "#3b82f6", glow: "#1e3a8a" },
+  };
+
+  const colors = themeColors[color];
+  const scale = hovered && isInteractive ? 1.08 : isSelected ? 1.05 : 1;
 
   return (
-    <group position={[x, 0.08, z]}>
-      <mesh castShadow receiveShadow>
+    <group
+      ref={groupRef}
+      onClick={onClick}
+      onPointerOver={() => isInteractive && setHovered(true)}
+      onPointerOut={() => setHovered(false)}
+    >
+      {isSelected && (
+        <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.42, 0.58, 32]} />
+          <meshStandardMaterial
+            color="#fbbf24"
+            emissive="#f59e0b"
+            emissiveIntensity={0.6}
+            metalness={0.8}
+          />
+        </mesh>
+      )}
+
+      {isValidMove && !isSelected && (
+        <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.38, 0.52, 32]} />
+          <meshStandardMaterial color="#4ade80" transparent opacity={0.8} />
+        </mesh>
+      )}
+
+      <mesh scale={[scale, scale, scale]} castShadow receiveShadow>
         <cylinderGeometry args={[0.32, 0.32, 0.1, 48]} />
         <meshStandardMaterial
-          color={color}
-          emissive={emissive}
-          emissiveIntensity={0.12}
-          roughness={0.35}
-          metalness={0.25}
+          color={colors.primary}
+          emissive={colors.glow}
+          emissiveIntensity={hovered ? 0.35 : isSelected ? 0.25 : 0.1}
+          roughness={0.3}
+          metalness={0.3}
         />
       </mesh>
 
-      <mesh position={[0, 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        position={[0, 0.06, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[scale, scale, scale]}
+      >
         <circleGeometry args={[0.29, 48]} />
-        <meshStandardMaterial color={color} roughness={0.3} metalness={0.15} />
+        <meshStandardMaterial
+          color={colors.primary}
+          roughness={0.25}
+          metalness={0.2}
+        />
       </mesh>
 
+      {hovered && isInteractive && (
+        <mesh position={[0, 0, 0]}>
+          <sphereGeometry args={[0.48, 16, 16]} />
+          <meshStandardMaterial
+            color={colors.primary}
+            transparent
+            opacity={0.2}
+            emissive={colors.primary}
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+      )}
+
       <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.34, 16]} />
-        <meshStandardMaterial color="#000" transparent opacity={0.2} />
+        <circleGeometry args={[0.36, 16]} />
+        <meshStandardMaterial color="#000" transparent opacity={0.25} />
       </mesh>
     </group>
   );

@@ -1,7 +1,11 @@
-import LudoBoard3D from "./components/board/LudoBoard3D";
+import Game from "./components/game/Game";
 
 function App() {
-  return <LudoBoard3D />;
+  return (
+    <div className="App">
+      <Game />
+    </div>
+  );
 }
 
 export default App;

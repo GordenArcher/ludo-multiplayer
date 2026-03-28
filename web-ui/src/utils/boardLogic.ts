@@ -6,74 +6,53 @@ export function cellPos(row: number, col: number): [number, number, number] {
   return [(col - 7) * CELL, 0, (row - 7) * CELL];
 }
 
+/**
+ * Lane-to-yard visual correspondence (what you see on screen):
+ *
+ *   col 7, rows 1-5   → visually connects to GREEN yard (top-right) → lane_green
+ *   row 7, cols 9-13  → visually connects to BLUE yard (bottom-right) → lane_blue
+ *   col 7, rows 9-13  → visually connects to YELLOW yard (bottom-left) → lane_yellow
+ *   row 7, cols 1-5   → visually connects to RED yard (top-left) → lane_red
+ *
+ * The L-shape per player:
+ *   Red:    row 6 cols 1-5 (white entry) + row 7 cols 1-5 (red home lane)
+ *   Green:  col 8 rows 1-5 (white entry) + col 7 rows 1-5 (green home lane)
+ *   Blue:   row 8 cols 9-13 (white entry) + row 7 cols 9-13 (blue home lane)
+ *   Yellow: col 6 rows 9-13 (white entry) + col 7 rows 9-13 (yellow home lane)
+ */
 export function getKind(r: number, c: number): Kind {
-  // RED
-  if (c === 7 && r >= 1 && r <= 5) return "lane_green";
-  if (r === 6 && c === 1) return "lane_red";
-
-  // GREEN
-  if (r === 7 && c >= 9 && c <= 13) return "lane_blue";
-  if (r === 1 && c === 8) return "lane_green";
-
-  // YELLOW
-  if (r === 7 && c >= 1 && c <= 5) return "lane_red";
-  if (r === 13 && c === 6) return "lane_yellow";
-
-  // BLUE
-  if (c === 7 && r >= 9 && r <= 13) return "lane_yellow";
-  if (r === 8 && c === 13) return "lane_blue";
-
-  // Center
-  if (r >= 6 && r <= 8 && c >= 6 && c <= 8) return "center";
-
-  // Yards
+  //  Yards (6×6 corners), checked first
   if (r <= 5 && c <= 5) return "yard_red";
   if (r <= 5 && c >= 9) return "yard_green";
   if (r >= 9 && c <= 5) return "yard_yellow";
   if (r >= 9 && c >= 9) return "yard_blue";
 
+  // Home lanes, checked before centre so they take priority
+  // RED
+  if (c === 7 && r >= 1 && r <= 5) return "lane_green";
+  if (r === 6 && c === 1) return "lane_red";
+  // GREEN
+  if (r === 7 && c >= 9 && c <= 13) return "lane_blue";
+  if (r === 1 && c === 8) return "lane_green";
+  // YELLOW
+  if (r === 7 && c >= 1 && c <= 5) return "lane_red";
+  if (r === 13 && c === 6) return "lane_yellow";
+  // BLUE
+  if (c === 7 && r >= 9 && r <= 13) return "lane_yellow";
+  if (r === 8 && c === 13) return "lane_blue";
+
+  // Centre 3×3
+  if (r >= 6 && r <= 8 && c >= 6 && c <= 8) return "center";
+
   return "path";
 }
 
-// function getKind(r: number, c: number): Kind {
-//   // ✅ FIRST: lanes (highest priority)
-
-//   // RED
-//   if (c === 7 && r >= 1 && r <= 5) return "lane_green";
-//   if (r === 6 && c === 1) return "lane_red";
-
-//   // GREEN
-//   if (r === 7 && c >= 9 && c <= 13) return "lane_blue";
-//   if (r === 1 && c === 8) return "lane_green";
-
-//   // YELLOW
-//   if (r === 7 && c >= 1 && c <= 5) return "lane_red";
-//   if (r === 13 && c === 6) return "lane_yellow";
-
-//   // BLUE
-//   if (c === 7 && r >= 9 && r <= 13) return "lane_yellow";
-//   if (r === 8 && c === 13) return "lane_blue";
-
-//   // ✅ THEN: center
-//   if (r >= 6 && r <= 8 && c >= 6 && c <= 8) return "center";
-
-//   // ✅ LAST: yards
-//   if (r <= 5 && c <= 5) return "yard_red";
-//   if (r <= 5 && c >= 9) return "yard_green";
-//   if (r >= 9 && c <= 5) return "yard_yellow";
-//   if (r >= 9 && c >= 9) return "yard_blue";
-
-//   return "path";
-// }
-
 export function getFlag(r: number, c: number): Flag {
-  // Starting squares
   if (r === 6 && c === 1) return "start_red";
   if (r === 1 && c === 8) return "start_green";
   if (r === 13 && c === 6) return "start_yellow";
   if (r === 8 && c === 13) return "start_blue";
 
-  // Safe spots (stars)
   const safeSpots: [number, number][] = [
     [6, 2],
     [2, 8],
