@@ -13,7 +13,7 @@ import SidePanel from "./SidePanel";
 import Dice from "./Dice";
 import { useGameEngine } from "../../hooks/useGameEngine";
 
-//  GameBoard, only mounts after we have a real config
+// GameBoard, only mounts after we have a real config
 const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
   config,
 }) => {
@@ -48,10 +48,7 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
     }
   };
 
-  //  KEY FIX: only render tokens for players that are actually in this game ──
-  // config.players only contains the 2/3/4 active players.
-  // Iterating gameState.tokens would give all 4 colours, the inactive ones
-  // would still receive clicks and appear interactive.
+  // Render tokens only for players that are actually in this game
   const renderTokens = () => {
     const elements: JSX.Element[] = [];
 
@@ -64,12 +61,6 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
         const isSelected = gameState.selectedTokenId === token.id;
         const isCurrentPlayerTurn = currentPlayer?.color === color;
 
-        // A token is only interactive when:
-        //  1. It's a human turn (not AI)
-        //  2. It belongs to the current player
-        //  3. The dice has been rolled
-        //  4. This specific token has a valid move available
-        //  5. No one has won yet
         const canInteract =
           isHumanTurn &&
           isCurrentPlayerTurn &&
@@ -100,8 +91,8 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
   };
 
   return (
-    <div className="w-full h-screen bg-gradient-radial from-[#1a0f08] to-[#030100] flex overflow-hidden">
-      <div className="flex-1 relative">
+    <div className="w-full h-screen bg-gradient-radial from-[#1a0f08] to-[#030100] relative overflow-hidden">
+      <div className="absolute inset-0">
         <Canvas
           shadows
           camera={{ position: [0, 14, 12], fov: 40 }}
@@ -145,29 +136,29 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
             makeDefault
           />
         </Canvas>
-
-        {!shouldAIPlay && !gameState.winner && (
-          <div className="absolute bottom-8 right-8 w-28 h-28 z-20 bg-black/40 rounded-2xl backdrop-blur-sm p-2">
-            <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
-              <ambientLight intensity={0.8} />
-              <pointLight position={[2, 2, 2]} intensity={0.8} />
-              <Dice
-                value={gameState.diceValue}
-                isRolling={isRolling || gameState.status === "rolling"}
-                onRoll={handleRollDice}
-                disabled={
-                  !isHumanTurn ||
-                  gameState.status !== "waiting" ||
-                  gameState.diceValue !== null ||
-                  !!gameState.winner
-                }
-              />
-            </Canvas>
-          </div>
-        )}
       </div>
 
-      <div className="w-80 p-4">
+      {!shouldAIPlay && !gameState.winner && (
+        <div className="absolute bottom-8 right-8 w-28 h-28 z-20 bg-black/40 rounded-2xl backdrop-blur-sm p-2">
+          <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
+            <ambientLight intensity={0.8} />
+            <pointLight position={[2, 2, 2]} intensity={0.8} />
+            <Dice
+              value={gameState.diceValue}
+              isRolling={isRolling || gameState.status === "rolling"}
+              onRoll={handleRollDice}
+              disabled={
+                !isHumanTurn ||
+                gameState.status !== "waiting" ||
+                gameState.diceValue !== null ||
+                !!gameState.winner
+              }
+            />
+          </Canvas>
+        </div>
+      )}
+
+      <div className="absolute top-0 right-0 h-full z-30">
         <SidePanel
           gameState={gameState}
           currentPlayer={currentPlayer}
