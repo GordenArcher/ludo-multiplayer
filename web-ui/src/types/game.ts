@@ -1,5 +1,3 @@
-// src/types/game.ts
-
 /**
  * Ludo Game Type Definitions
  * Core types used throughout the game engine and UI components
@@ -84,7 +82,12 @@ export interface GameState {
  * - moving: Token movement animation in progress
  * - finished: Game has ended
  */
-export type GameStatus = "waiting" | "rolling" | "moving" | "finished";
+export type GameStatus =
+  | "waiting"
+  | "rolling"
+  | "rolled"
+  | "moving"
+  | "finished";
 
 /**
  * Represents a valid move a player can make

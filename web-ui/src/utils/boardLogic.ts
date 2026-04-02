@@ -7,39 +7,51 @@ export function cellPos(row: number, col: number): [number, number, number] {
 }
 
 /**
- * Lane-to-yard visual correspondence (what you see on screen):
+ * Lane-to-yard visual correspondence (corrected):
  *
- *   col 7, rows 1-5   → visually connects to GREEN yard (top-right) → lane_green
- *   row 7, cols 9-13  → visually connects to BLUE yard (bottom-right) → lane_blue
- *   col 7, rows 9-13  → visually connects to YELLOW yard (bottom-left) → lane_yellow
- *   row 7, cols 1-5   → visually connects to RED yard (top-left) → lane_red
+ *   row 7, cols 1-5   → RED home lane    (horizontal, points LEFT toward red yard)
+ *   col 7, rows 1-5   → GREEN home lane  (vertical, points UP toward green yard)
+ *   row 7, cols 9-13  → BLUE home lane   (horizontal, points RIGHT toward blue yard)
+ *   col 7, rows 9-13  → YELLOW home lane (vertical, points DOWN toward yellow yard)
  *
- * The L-shape per player:
- *   Red:    row 6 cols 1-5 (white entry) + row 7 cols 1-5 (red home lane)
- *   Green:  col 8 rows 1-5 (white entry) + col 7 rows 1-5 (green home lane)
- *   Blue:   row 8 cols 9-13 (white entry) + row 7 cols 9-13 (blue home lane)
- *   Yellow: col 6 rows 9-13 (white entry) + col 7 rows 9-13 (yellow home lane)
+ * Cross-referenced against tokenPositions.ts HOME_LANES:
+ *   red:    row 7, cols 1-5   ✓
+ *   green:  col 7, rows 1-5   ✓
+ *   yellow: col 7, rows 9-13  ✓
+ *   blue:   row 7, cols 9-13  ✓
+ *
+ * FIX #4 — previous code had lane_green and lane_red swapped for the
+ * vertical lane (col 7), and lane_blue / lane_green swapped for the
+ * horizontal lane (row 7). This caused tile colors to mismatch the
+ * HOME_LANES positions in tokenPositions.ts.
  */
 export function getKind(r: number, c: number): Kind {
-  //  Yards (6×6 corners), checked first
+  // Yards (6×6 corners), checked first
   if (r <= 5 && c <= 5) return "yard_red";
   if (r <= 5 && c >= 9) return "yard_green";
   if (r >= 9 && c <= 5) return "yard_yellow";
   if (r >= 9 && c >= 9) return "yard_blue";
 
-  // Home lanes, checked before centre so they take priority
-  // RED
+  // Home lanes — checked before centre so they take priority
+  // GREEN: vertical strip col 7, rows 1-5 (runs from top toward center)
   if (c === 7 && r >= 1 && r <= 5) return "lane_green";
-  if (r === 6 && c === 1) return "lane_red";
-  // GREEN
-  if (r === 7 && c >= 9 && c <= 13) return "lane_blue";
-  if (r === 1 && c === 8) return "lane_green";
-  // YELLOW
+
+  // RED: horizontal strip row 7, cols 1-5 (runs from left toward center)
   if (r === 7 && c >= 1 && c <= 5) return "lane_red";
-  if (r === 13 && c === 6) return "lane_yellow";
-  // BLUE
+
+  // BLUE: horizontal strip row 7, cols 9-13 (runs from right toward center)
+  if (r === 7 && c >= 9 && c <= 13) return "lane_blue";
+
+  // YELLOW: vertical strip col 7, rows 9-13 (runs from bottom toward center)
   if (c === 7 && r >= 9 && r <= 13) return "lane_yellow";
-  if (r === 8 && c === 13) return "lane_blue";
+
+  // Start squares (single cell, corner of each L-shape)
+  // These are part of the outer track and already covered by getFlag,
+  // but getKind must still return the correct lane color for them.
+  if (r === 6 && c === 1) return "lane_red"; // red start square
+  if (r === 1 && c === 8) return "lane_green"; // green start square
+  if (r === 13 && c === 6) return "lane_yellow"; // yellow start square
+  if (r === 8 && c === 13) return "lane_blue"; // blue start square
 
   // Centre 3×3
   if (r >= 6 && r <= 8 && c >= 6 && c <= 8) return "center";

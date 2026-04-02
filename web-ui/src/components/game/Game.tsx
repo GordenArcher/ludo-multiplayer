@@ -10,15 +10,23 @@ import YardCircles from "../board/YardCircles";
 import CenterStar from "../board/CenterStar";
 import Token from "../board/Token";
 import SidePanel from "./SidePanel";
-import Dice from "./Dice";
 import { useGameEngine } from "../../hooks/useGameEngine";
 
-// GameBoard, only mounts after we have a real config
 const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
   config,
+  onBackToMenu,
 }) => {
-  const [isRolling, setIsRolling] = useState(false);
-
+  /**
+   * FIX - removed the local `isRolling` useState entirely.
+   *
+   * Previously `isRolling` was a separate boolean managed in Game.tsx with
+   * a setTimeout to clear it. This created two sources of truth that drifted
+   * apart from gameState.status, causing SidePanel to receive contradictory
+   * signals (isRolling=true but diceValue=null, or vice versa).
+   *
+   * Now: derive isRolling purely from gameState.status === "rolling".
+   * The single source of truth is the game state machine.
+   */
   const {
     gameState,
     isHumanTurn,
@@ -30,13 +38,15 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
     shouldAIPlay,
   } = useGameEngine(config.players);
 
+  // Derived directly from game state, no separate local flag
+  const isRolling = gameState.status === "rolling";
+
   const handleRollDice = async () => {
     if (!isHumanTurn) return;
     if (gameState.status !== "waiting") return;
     if (gameState.diceValue !== null) return;
-    setIsRolling(true);
     await rollDice();
-    setTimeout(() => setIsRolling(false), 600);
+    // No setTimeout needed, rollDice manages status transitions internally
   };
 
   const handleTokenClick = (tokenId: number) => {
@@ -48,15 +58,14 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
     }
   };
 
-  // Render tokens only for players that are actually in this game
   const renderTokens = () => {
     const elements: JSX.Element[] = [];
 
     for (const player of config.players) {
       const color = player.color as PlayerColor;
-      const tokens = gameState.tokens[color];
+      const playerTokens = gameState.tokens[color];
 
-      tokens.forEach((token, idx) => {
+      playerTokens.forEach((token, idx) => {
         const isValidMove = validMoves.some((m) => m.tokenId === token.id);
         const isSelected = gameState.selectedTokenId === token.id;
         const isCurrentPlayerTurn = currentPlayer?.color === color;
@@ -138,26 +147,6 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
         </Canvas>
       </div>
 
-      {!shouldAIPlay && !gameState.winner && (
-        <div className="absolute bottom-8 right-8 w-28 h-28 z-20 bg-black/40 rounded-2xl backdrop-blur-sm p-2">
-          <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
-            <ambientLight intensity={0.8} />
-            <pointLight position={[2, 2, 2]} intensity={0.8} />
-            <Dice
-              value={gameState.diceValue}
-              isRolling={isRolling || gameState.status === "rolling"}
-              onRoll={handleRollDice}
-              disabled={
-                !isHumanTurn ||
-                gameState.status !== "waiting" ||
-                gameState.diceValue !== null ||
-                !!gameState.winner
-              }
-            />
-          </Canvas>
-        </div>
-      )}
-
       <div className="absolute top-0 right-0 h-full z-30">
         <SidePanel
           gameState={gameState}
@@ -166,7 +155,7 @@ const GameBoard: React.FC<{ config: GameConfig; onBackToMenu: () => void }> = ({
           diceValue={gameState.diceValue}
           validMovesCount={validMoves.length}
           onRollDice={handleRollDice}
-          isRolling={isRolling || gameState.status === "rolling"}
+          isRolling={isRolling}
         />
       </div>
     </div>
@@ -180,7 +169,6 @@ const Game: React.FC = () => {
     return <StartScreen onStartGame={setGameConfig} />;
   }
 
-  // Key ensures a full remount (fresh useGameEngine state) on new game
   const gameKey = gameConfig.players
     .map((p) => `${p.color}-${p.type}`)
     .join("|");

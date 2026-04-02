@@ -37,13 +37,85 @@ const getTokenStatus = (tokens: any[]) => {
     (t) => t.position === -1 && !t.isFinished,
   ).length;
   const onBoard = tokens.filter(
-    (t) => t.position >= 0 && t.position <= 51 && !t.isFinished,
+    (t) => t.position >= 0 && t.position <= 50 && !t.isFinished,
   ).length;
   const inHomeRun = tokens.filter(
-    (t) => t.position >= 52 && !t.isFinished,
+    (t) => t.position >= 51 && !t.isFinished,
   ).length;
   const finished = tokens.filter((t) => t.isFinished).length;
   return { inHome, onBoard, inHomeRun, finished };
+};
+
+const PIP_POSITIONS: Record<number, [number, number][]> = {
+  1: [[50, 50]],
+  2: [
+    [28, 28],
+    [72, 72],
+  ],
+  3: [
+    [28, 28],
+    [50, 50],
+    [72, 72],
+  ],
+  4: [
+    [28, 28],
+    [72, 28],
+    [28, 72],
+    [72, 72],
+  ],
+  5: [
+    [28, 28],
+    [72, 28],
+    [50, 50],
+    [28, 72],
+    [72, 72],
+  ],
+  6: [
+    [28, 20],
+    [72, 20],
+    [28, 50],
+    [72, 50],
+    [28, 80],
+    [72, 80],
+  ],
+};
+
+const DiceFace: React.FC<{ value: number }> = ({ value }) => {
+  const pips = PIP_POSITIONS[value] ?? [];
+  return (
+    <div
+      style={{
+        width: 72,
+        height: 72,
+        background: "#f8f3e8",
+        borderRadius: 10,
+        border: "2px solid #d4c9b0",
+        position: "relative",
+        boxShadow:
+          "0 4px 12px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.8)",
+      }}
+    >
+      {pips.map(([px, py], i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            width: 11,
+            height: 11,
+            borderRadius: "50%",
+            background:
+              value === 1
+                ? "radial-gradient(circle at 35% 35%, #ff6b6b, #cc1111)"
+                : "radial-gradient(circle at 35% 35%, #444, #111)",
+            left: `${px}%`,
+            top: `${py}%`,
+            transform: "translate(-50%, -50%)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+          }}
+        />
+      ))}
+    </div>
+  );
 };
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -56,31 +128,51 @@ const SidePanel: React.FC<SidePanelProps> = ({
   isRolling,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+
   const { players, tokens, winner, status } = gameState;
 
+  /**
+   * FIX - removed the `displayedValue` + useEffect indirection entirely.
+   *
+   * The old approach added a 650ms delay before showing the dice face.
+   * Combined with the short roll duration, this meant the face appeared
+   * right as the state was being cleared — the player never saw it.
+   *
+   * Now: show `diceValue` directly. The spinner ("Rolling...") already
+   * covers the rolling phase. When status transitions to "rolled",
+   * diceValue is set and the face appears immediately. It stays visible
+   * until the player moves or the auto-pass timer clears it.
+   */
+  const isSpinning = isRolling || status === "rolling";
+  const showDiceFace = !isSpinning && diceValue !== null && !winner;
+
+  // Roll button: only in "waiting" state, before the dice has been rolled
   const canRoll =
     isHumanTurn &&
     status === "waiting" &&
     diceValue === null &&
     !winner &&
-    !isRolling;
+    !isSpinning;
 
+  // Pass button: dice was rolled, no valid moves, waiting for explicit pass
+  // (auto-pass also fires after 1200ms, but show the button too)
   const showPassButton =
-    isHumanTurn && diceValue !== null && validMovesCount === 0 && !winner;
+    isHumanTurn &&
+    status === "rolled" &&
+    diceValue !== null &&
+    validMovesCount === 0 &&
+    !winner;
 
-  const isAIPlaying =
-    currentPlayer?.type === "ai" && status === "waiting" && !winner;
+  const isAITurn = currentPlayer?.type === "ai" && !winner;
 
-  // Mini floating action buttons for collapsed mode
   const renderMiniControls = () => {
     if (!isHumanTurn || winner) return null;
-
     return (
       <div className="fixed right-4 bottom-24 z-30 flex flex-col gap-2">
         {canRoll && (
           <button
             onClick={onRollDice}
-            className="w-14 h-14 cursor-pointer bg-amber-500 hover:bg-amber-400 text-black rounded-full shadow-2xl flex items-center justify-center transition-all transform active:scale-95"
+            className="w-14 h-14 cursor-pointer bg-amber-500 hover:bg-amber-400 text-black rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95"
             title="Roll Dice"
           >
             <Dice5 className="w-6 h-6" />
@@ -99,34 +191,29 @@ const SidePanel: React.FC<SidePanelProps> = ({
     );
   };
 
-  // Current player mini indicator for collapsed mode
   const renderMiniCurrentPlayer = () => {
     if (!currentPlayer || winner) return null;
-
-    if (isAIPlaying) {
-      return (
-        <div className="fixed top-4 right-4 z-30 bg-black/60 backdrop-blur-md rounded-full px-3 py-2 border border-white/20 shadow-xl">
-          <div className="flex items-center gap-2">
-            <Loader className="w-3.5 h-3.5 animate-spin text-white/80" />
-            <span className="text-xs text-white/80">AI thinking...</span>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="fixed top-4 right-4 z-30 bg-black/60 backdrop-blur-md rounded-full px-3 py-2 border border-white/20 shadow-xl">
         <div className="flex items-center gap-2">
-          <div
-            className="w-2.5 h-2.5 rounded-full"
-            style={{
-              background: PLAYER_THEMES[currentPlayer.color].primary,
-              boxShadow: `0 0 8px ${PLAYER_THEMES[currentPlayer.color].primary}`,
-            }}
-          />
+          {isAITurn ? (
+            <Loader className="w-3.5 h-3.5 animate-spin text-white/80" />
+          ) : (
+            <div
+              className="w-2.5 h-2.5 rounded-full"
+              style={{
+                background: PLAYER_THEMES[currentPlayer.color].primary,
+                boxShadow: `0 0 8px ${PLAYER_THEMES[currentPlayer.color].primary}`,
+              }}
+            />
+          )}
           <span
             className="text-sm font-medium"
-            style={{ color: PLAYER_THEMES[currentPlayer.color].primary }}
+            style={{
+              color: isAITurn
+                ? "#aaa"
+                : PLAYER_THEMES[currentPlayer.color].primary,
+            }}
           >
             {currentPlayer.name || DEFAULT_PLAYER_NAMES[currentPlayer.color]}
           </span>
@@ -140,23 +227,17 @@ const SidePanel: React.FC<SidePanelProps> = ({
     );
   };
 
-  // Dice value mini display for collapsed mode
   const renderMiniDiceValue = () => {
-    if (!diceValue || winner) return null;
-
+    if (!showDiceFace) return null;
     return (
-      <div className="fixed top-20 right-4 z-30 bg-black/60 backdrop-blur-md rounded-full px-3 py-2 border border-white/20 shadow-xl">
-        <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-white">{diceValue}</span>
-        </div>
+      <div className="fixed top-20 right-4 z-30 bg-black/60 backdrop-blur-md rounded-xl p-2 border border-white/20 shadow-xl">
+        <DiceFace value={diceValue!} />
       </div>
     );
   };
 
-  // Winner mini display for collapsed mode
   const renderMiniWinner = () => {
     if (!winner) return null;
-
     return (
       <div className="fixed top-4 right-4 z-30 bg-amber-500/90 backdrop-blur-md rounded-full px-3 py-2 shadow-xl">
         <div className="flex items-center gap-2">
@@ -179,7 +260,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
         >
           <PanelLeftOpen className="w-5 h-5 text-white/80" />
         </button>
-
         {renderMiniCurrentPlayer()}
         {renderMiniDiceValue()}
         {renderMiniWinner()}
@@ -188,7 +268,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
     );
   }
 
-  // Expanded view, full side panel
   return (
     <>
       <button
@@ -200,6 +279,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
       </button>
 
       <div className="h-full bg-black/40 backdrop-blur-md rounded-2xl p-5 border border-white/10 shadow-2xl flex flex-col relative">
+        {/* Header */}
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Gamepad2 className="w-6 h-6 text-amber-500" />
@@ -223,23 +303,20 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
         {currentPlayer && !winner && (
           <div
-            className="mb-6 p-4 rounded-xl text-center"
+            className="mb-4 p-4 rounded-xl text-center"
             style={{
-              background: isAIPlaying
-                ? "bg-white/10"
-                : `${PLAYER_THEMES[currentPlayer.color].primary}20`,
+              background: `${PLAYER_THEMES[currentPlayer.color].primary}18`,
               border: `1px solid ${
-                isAIPlaying
+                isAITurn
                   ? "rgba(255,255,255,0.2)"
                   : PLAYER_THEMES[currentPlayer.color].primary
               }`,
             }}
           >
-            {isAIPlaying ? (
+            {isAITurn ? (
               <>
                 <p className="text-white/60 text-xs uppercase tracking-wider flex items-center justify-center gap-1 mb-2">
-                  <Loader className="w-3 h-3 animate-spin" />
-                  AI Thinking
+                  <Loader className="w-3 h-3 animate-spin" /> AI Thinking
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <Brain className="w-5 h-5 text-white/60" />
@@ -248,13 +325,11 @@ const SidePanel: React.FC<SidePanelProps> = ({
                       DEFAULT_PLAYER_NAMES[currentPlayer.color]}
                   </p>
                 </div>
-                <p className="text-white/40 text-xs mt-2">Making decision...</p>
               </>
             ) : (
               <>
                 <p className="text-white/60 text-xs uppercase tracking-wider flex items-center justify-center gap-1">
-                  <ArrowRight className="w-3 h-3" />
-                  Current Turn
+                  <ArrowRight className="w-3 h-3" /> Current Turn
                 </p>
                 <p
                   className="text-xl font-bold mt-1"
@@ -264,33 +339,38 @@ const SidePanel: React.FC<SidePanelProps> = ({
                     DEFAULT_PLAYER_NAMES[currentPlayer.color]}
                 </p>
                 <p className="text-white/40 text-xs mt-1 flex items-center justify-center gap-1">
-                  <Users className="w-3 h-3" />
-                  Human Player
+                  <Users className="w-3 h-3" /> Human Player
                 </p>
               </>
             )}
           </div>
         )}
 
-        {diceValue && !winner && !isAIPlaying && (
-          <div className="mb-6 text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-lg">
-              <Dice5 className="w-10 h-10 text-stone-800" />
-              <span className="text-3xl font-bold text-stone-800 ml-1">
-                {diceValue}
-              </span>
-            </div>
+        {isSpinning && !winner && (
+          <div className="mb-5 flex items-center justify-center gap-2">
+            <Loader className="w-5 h-5 animate-spin text-amber-400" />
+            <span className="text-amber-400 text-sm font-medium">
+              Rolling...
+            </span>
+          </div>
+        )}
+
+        {showDiceFace && (
+          <div className="mb-5 flex flex-col items-center gap-2">
+            <DiceFace value={diceValue!} />
             {validMovesCount > 0 && isHumanTurn && (
-              <p className="text-green-400 text-sm mt-2 flex items-center justify-center gap-1">
+              <p className="text-green-400 text-sm flex items-center gap-1">
                 <Check className="w-4 h-4" />
                 {validMovesCount} valid move{validMovesCount !== 1 ? "s" : ""}
               </p>
             )}
-            {validMovesCount === 0 && diceValue && isHumanTurn && (
-              <p className="text-red-400 text-sm mt-2 flex items-center justify-center gap-1">
-                <X className="w-4 h-4" />
-                No valid moves, click Pass to end turn
+            {validMovesCount === 0 && isHumanTurn && (
+              <p className="text-red-400 text-sm flex items-center gap-1">
+                <X className="w-4 h-4" /> No valid moves — passing…
               </p>
+            )}
+            {!isHumanTurn && isAITurn && (
+              <p className="text-white/50 text-sm">AI rolled {diceValue}</p>
             )}
           </div>
         )}
@@ -298,20 +378,18 @@ const SidePanel: React.FC<SidePanelProps> = ({
         {!winner && canRoll && (
           <button
             onClick={onRollDice}
-            className="w-full cursor-pointer py-3 mb-6 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all transform active:scale-95 flex items-center justify-center gap-2"
+            className="w-full cursor-pointer py-3 mb-4 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
           >
-            <Dice5 className="w-5 h-5" />
-            Roll Dice
+            <Dice5 className="w-5 h-5" /> Roll Dice
           </button>
         )}
 
         {!winner && showPassButton && (
           <button
             onClick={onRollDice}
-            className="w-full py-3 mb-6 bg-red-500/80 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 mb-4 bg-red-500/80 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
-            <X className="w-5 h-5" />
-            Pass Turn
+            <X className="w-5 h-5" /> Pass Turn
           </button>
         )}
 
@@ -322,18 +400,17 @@ const SidePanel: React.FC<SidePanelProps> = ({
           <div className="space-y-3">
             {players.map((player) => {
               const playerTokens = tokens[player.color];
-              const tokenStatus = getTokenStatus(playerTokens);
+              const ts = getTokenStatus(playerTokens);
               const isCurrent = currentPlayer?.color === player.color;
-              const isCurrentAIPlaying = isCurrent && isAIPlaying;
+              const isCurrentAI = isCurrent && isAITurn;
               const theme = PLAYER_THEMES[player.color];
-              const displayName =
-                player.name || DEFAULT_PLAYER_NAMES[player.color];
+              const name = player.name || DEFAULT_PLAYER_NAMES[player.color];
 
               return (
                 <div
                   key={player.color}
                   className={`p-3 rounded-lg transition-all ${
-                    isCurrentAIPlaying
+                    isCurrentAI
                       ? "bg-white/10 border border-white/20"
                       : isCurrent
                         ? "bg-white/15"
@@ -345,84 +422,62 @@ const SidePanel: React.FC<SidePanelProps> = ({
                       <div
                         className="w-3 h-3 rounded-full"
                         style={{
-                          background: isCurrentAIPlaying
-                            ? "#888"
-                            : theme.primary,
-                          boxShadow: isCurrentAIPlaying
+                          background: isCurrentAI ? "#888" : theme.primary,
+                          boxShadow: isCurrentAI
                             ? "none"
                             : `0 0 6px ${theme.primary}`,
                         }}
                       />
                       <span
                         className="text-white font-medium text-sm"
-                        style={{
-                          color: isCurrentAIPlaying ? "#aaa" : theme.primary,
-                        }}
+                        style={{ color: isCurrentAI ? "#aaa" : theme.primary }}
                       >
-                        {displayName}
+                        {name}
                       </span>
-                      {player.type === "ai" && !isCurrentAIPlaying && (
+                      {player.type === "ai" && !isCurrentAI && (
                         <Brain className="w-3 h-3 text-white/40" />
                       )}
-                      {isCurrentAIPlaying && (
+                      {isCurrentAI && (
                         <Loader className="w-3 h-3 animate-spin text-white/60" />
                       )}
                     </div>
                     <span className="text-white/60 text-sm font-mono flex items-center gap-1">
                       <Crown className="w-3 h-3" />
-                      {tokenStatus.finished}/4
+                      {ts.finished}/4
                     </span>
                   </div>
 
-                  {isCurrentAIPlaying && (
-                    <div className="mb-2 text-[10px] text-amber-400/70 flex items-center gap-1">
-                      <Loader className="w-2.5 h-2.5 animate-spin" />
-                      <span>Making move...</span>
-                    </div>
-                  )}
-
                   <div className="flex gap-1 h-1.5">
-                    <div className="flex-1 bg-white/20 rounded-full overflow-hidden">
+                    {[
+                      {
+                        val: ts.inHome,
+                        bg: isCurrentAI ? "#666" : theme.primary,
+                      },
+                      {
+                        val: ts.onBoard,
+                        bg: isCurrentAI ? "#666" : theme.secondary,
+                      },
+                      {
+                        val: ts.inHomeRun,
+                        bg: isCurrentAI ? "#666" : theme.glow,
+                      },
+                      { val: ts.finished, bg: "#fbbf24" },
+                    ].map(({ val, bg }, i) => (
                       <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(tokenStatus.inHome / 4) * 100}%`,
-                          background: isCurrentAIPlaying
-                            ? "#666"
-                            : theme.primary,
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 bg-white/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(tokenStatus.onBoard / 4) * 100}%`,
-                          background: isCurrentAIPlaying
-                            ? "#666"
-                            : theme.secondary,
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 bg-white/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(tokenStatus.inHomeRun / 4) * 100}%`,
-                          background: isCurrentAIPlaying ? "#666" : theme.glow,
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 bg-white/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(tokenStatus.finished / 4) * 100}%`,
-                          background: "#fbbf24",
-                        }}
-                      />
-                    </div>
+                        key={i}
+                        className="flex-1 bg-white/20 rounded-full overflow-hidden"
+                      >
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${(val / 4) * 100}%`,
+                            background: bg,
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
+
                   <div className="flex justify-between text-[10px] text-white/30 mt-1">
                     <span className="flex items-center gap-0.5">
                       <Home className="w-2.5 h-2.5" /> Home
@@ -445,8 +500,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
         <div className="mt-4 pt-3 border-t border-white/10 text-center">
           <p className="text-white/30 text-[10px] flex items-center justify-center gap-1">
-            <span>🖱️</span> Click a token to move •{" "}
-            <Dice5 className="w-3 h-3" /> Roll dice to play
+            <span>🖱️</span> Click token to move • <Dice5 className="w-3 h-3" />{" "}
+            Roll to play
           </p>
         </div>
       </div>
