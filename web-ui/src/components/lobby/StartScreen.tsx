@@ -29,9 +29,9 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
 
   const handlePlayerCountChange = (count: 2 | 3 | 4) => {
     setPlayerCount(count);
-    const newPlayers = PLAYER_COLORS.slice(0, count).map((color, index) => ({
+    const newPlayers = PLAYER_COLORS.slice(0, count).map((color) => ({
       color,
-      type: "human",
+      type: "human" as PlayerType,
       name: "",
     }));
     setPlayers(newPlayers);

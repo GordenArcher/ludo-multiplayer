@@ -19,7 +19,7 @@ interface TokenProps {
 }
 
 const Token: React.FC<TokenProps> = ({
-  tokenId,
+  // tokenId,
   color,
   position,
   isFinished,

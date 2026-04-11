@@ -34,7 +34,8 @@ function isSafe(localPos: number, color: PlayerColor): boolean {
   return SAFE_RING.has(toRingIndex(localPos, color));
 }
 
-export function createInitialTokens(color: PlayerColor): Token[] {
+export function createInitialTokens(_color: PlayerColor): Token[] {
+  console.log(_color);
   return [0, 1, 2, 3].map((id) => ({ id, position: -1, isFinished: false }));
 }
 

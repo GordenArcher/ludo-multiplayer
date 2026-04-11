@@ -34,10 +34,10 @@ const GameBoard: React.FC<{
     rollDice,
     makeMove,
     selectToken,
-    shouldAIPlay,
+    // shouldAIPlay,
   } = useGameEngine(config.players);
 
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled] = useState(true);
   const [showQuitModal, setShowQuitModal] = useState(false);
 
   const isRolling = gameState.status === "rolling";
