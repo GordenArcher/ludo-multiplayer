@@ -15,6 +15,7 @@ import {
   Loader,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
 import type { GameState, Player } from "../../types/game";
 import {
@@ -30,6 +31,7 @@ interface SidePanelProps {
   validMovesCount: number;
   onRollDice: () => void;
   isRolling: boolean;
+  onQuit: () => void;
 }
 
 const getTokenStatus = (tokens: any[]) => {
@@ -126,27 +128,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
   validMovesCount,
   onRollDice,
   isRolling,
+  onQuit,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const { players, tokens, winner, status } = gameState;
 
-  /**
-   * FIX - removed the `displayedValue` + useEffect indirection entirely.
-   *
-   * The old approach added a 650ms delay before showing the dice face.
-   * Combined with the short roll duration, this meant the face appeared
-   * right as the state was being cleared — the player never saw it.
-   *
-   * Now: show `diceValue` directly. The spinner ("Rolling...") already
-   * covers the rolling phase. When status transitions to "rolled",
-   * diceValue is set and the face appears immediately. It stays visible
-   * until the player moves or the auto-pass timer clears it.
-   */
   const isSpinning = isRolling || status === "rolling";
   const showDiceFace = !isSpinning && diceValue !== null && !winner;
 
-  // Roll button: only in "waiting" state, before the dice has been rolled
   const canRoll =
     isHumanTurn &&
     status === "waiting" &&
@@ -154,8 +144,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
     !winner &&
     !isSpinning;
 
-  // Pass button: dice was rolled, no valid moves, waiting for explicit pass
-  // (auto-pass also fires after 1200ms, but show the button too)
   const showPassButton =
     isHumanTurn &&
     status === "rolled" &&
@@ -279,7 +267,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
       </button>
 
       <div className="h-full bg-black/40 backdrop-blur-md rounded-2xl p-5 border border-white/10 shadow-2xl flex flex-col relative">
-        {/* Header */}
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Gamepad2 className="w-6 h-6 text-amber-500" />
@@ -378,7 +365,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
         {!winner && canRoll && (
           <button
             onClick={onRollDice}
-            className="w-full cursor-pointer py-3 mb-4 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+            className="w-full cursor-pointer py-3 mb-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
           >
             <Dice5 className="w-5 h-5" /> Roll Dice
           </button>
@@ -387,11 +374,19 @@ const SidePanel: React.FC<SidePanelProps> = ({
         {!winner && showPassButton && (
           <button
             onClick={onRollDice}
-            className="w-full py-3 mb-4 bg-red-500/80 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 mb-3 bg-red-500/80 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
             <X className="w-5 h-5" /> Pass Turn
           </button>
         )}
+
+        <button
+          onClick={onQuit}
+          className="w-full cursor-pointer py-2.5 mb-4 bg-white/5 hover:bg-red-900/30 text-white/60 hover:text-red-400 font-medium rounded-xl transition-all flex items-center justify-center gap-2 border border-white/10 hover:border-red-900/30"
+        >
+          <LogOut className="w-4 h-4" />
+          Quit to Menu
+        </button>
 
         <div className="flex-1 overflow-y-auto">
           <p className="text-white/50 text-xs uppercase tracking-wider mb-3">

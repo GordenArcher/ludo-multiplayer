@@ -20,32 +20,10 @@ import { ENTRY_OFFSET } from "./gameLogic";
 /** Cell size in world units */
 const CELL_SIZE = 0.88;
 
-/**
- * Convert grid coordinates (row, col) to world position (x, z)
- *
- * @param row - Grid row (0-14, 0 = top)
- * @param col - Grid column (0-14, 0 = left)
- * @returns World coordinates with x (right/left) and z (forward/back)
- */
 function rc(row: number, col: number) {
   return { x: (col - 7) * CELL_SIZE, z: (row - 7) * CELL_SIZE };
 }
 
-/**
- * Outer track positions in clockwise order
- *
- * The main path consists of 52 cells arranged in a clockwise loop.
- * This array maps ring index (0-51) to actual grid coordinates.
- *
- * Path flow:
- *   Red start (6,1) → clockwise around → back to Red start
- *
- * Colors enter at specific ring indices:
- *   Red:    0   (6,1)
- *   Green:  13  (0,8)
- *   Yellow: 26  (8,14)
- *   Blue:   39  (14,6)
- */
 export const OUTER_TRACK: [number, number][] = [
   [6, 1], // 0   Red start
   [6, 2], // 1
@@ -101,66 +79,41 @@ export const OUTER_TRACK: [number, number][] = [
   [6, 0], // 51
 ];
 
-// Validate track length
 if (OUTER_TRACK.length !== 52) {
   console.error(`OUTER_TRACK has ${OUTER_TRACK.length} — expected 52`);
 }
 
-/**
- * HOME LANES, 5 cells each (local positions 51-55)
- *
- * Each player has a 5-cell home lane that connects their last outer cell
- * to the center finish area. Tokens must traverse these cells in order
- * and need an exact roll to reach the center.
- *
- * Entry points from outer track:
- *   Red:   local 50 → ring 50 → [7,0]  → turn RIGHT → home lane cells
- *   Green: local 50 → ring 11 → [0,7]  → turn DOWN  → home lane cells
- *   Yellow: local 50 → ring 24 → [7,14] → turn LEFT  → home lane cells
- *   Blue:  local 50 → ring 37 → [14,7] → turn UP    → home lane cells
- *
- * Movement rules:
- *   From home lane entry (local 51):
- *     roll 1 → 52, roll 2 → 53, roll 3 → 54, roll 4 → 55, roll 5 → 56 (finish)
- *     roll 6 → 57 = overshoot → invalid
- */
 export const HOME_LANES: Record<PlayerColor, [number, number][]> = {
   red: [
-    [7, 1], // 51 - first home cell
-    [7, 2], // 52
-    [7, 3], // 53
-    [7, 4], // 54
-    [7, 5], // 55 - last home cell (adjacent to center)
+    [7, 1],
+    [7, 2],
+    [7, 3],
+    [7, 4],
+    [7, 5],
   ],
   green: [
-    [1, 7], // 51
-    [2, 7], // 52
-    [3, 7], // 53
-    [4, 7], // 54
-    [5, 7], // 55
+    [1, 7],
+    [2, 7],
+    [3, 7],
+    [4, 7],
+    [5, 7],
   ],
   yellow: [
-    [7, 13], // 51
-    [7, 12], // 52
-    [7, 11], // 53
-    [7, 10], // 54
-    [7, 9], // 55
+    [7, 13],
+    [7, 12],
+    [7, 11],
+    [7, 10],
+    [7, 9],
   ],
   blue: [
-    [13, 7], // 51
-    [12, 7], // 52
-    [11, 7], // 53
-    [10, 7], // 54
-    [9, 7], // 55
+    [13, 7],
+    [12, 7],
+    [11, 7],
+    [10, 7],
+    [9, 7],
   ],
 };
 
-/**
- * Yard positions for each player
- * Each player has 4 distinct slots where their tokens sit when in home.
- *
- * These are positioned within the colored corner squares.
- */
 const YARD: Record<PlayerColor, [number, number][]> = {
   red: [
     [1.8, 1.8],
@@ -188,85 +141,163 @@ const YARD: Record<PlayerColor, [number, number][]> = {
   ],
 };
 
-/**
- * Small offsets for finished tokens
- * When multiple tokens finish, they're arranged in a small cluster
- * around the center star to avoid overlapping.
- */
 const FINISH_OFFSETS: [number, number][] = [
-  [0.15, 0.15], // Top-right quadrant
-  [-0.15, 0.15], // Top-left quadrant
-  [0.15, -0.15], // Bottom-right quadrant
-  [-0.15, -0.15], // Bottom-left quadrant
+  [0.15, 0.15],
+  [-0.15, 0.15],
+  [0.15, -0.15],
+  [-0.15, -0.15],
 ];
 
 /**
- * Get the 3D world position for a token based on its game state
+ * Stack offsets for tokens sharing the same board cell.
  *
- * Maps logical positions to actual coordinates on the 3D board:
- *   - Finished tokens: clustered around center star
- *   - Yard tokens: positioned in colored home squares
- *   - Home lane tokens: on colored path to center
- *   - Outer track tokens: on main path with ring index mapping
+ * When multiple tokens occupy the same cell (same player or safe square),
+ * we spread them in a tight cluster so they're all visible.
+ * stackIndex is the token's position within that cluster (0 = no offset).
  *
- * @param position - Game position (-2, -1, 0-50, 51-55)
- * @param color - Player color (determines offset and home lane)
- * @param tokenIndex - Token index (0-3) for yard/finish arrangement
- * @returns World coordinates { x, y, z } for rendering
+ * Layout (top view):
+ *   slot 0 → centre          (no XZ offset, slightly higher Y)
+ *   slot 1 → right
+ *   slot 2 → left
+ *   slot 3 → back
+ *
+ * Y is staggered so tokens don't clip through each other.
+ */
+const STACK_XZ: [number, number][] = [
+  [0, 0], // slot 0 — base
+  [0.22, 0], // slot 1
+  [-0.22, 0], // slot 2
+  [0, 0.22], // slot 3
+];
+
+const STACK_Y_STEP = 0.07; // each layer raises by this amount
+
+/**
+ * Get the 3D world position for a token based on its game state.
+ *
+ * @param position   - Game position (-2, -1, 0–50, 51–55)
+ * @param color      - Player color
+ * @param tokenIndex - Token index (0–3) for yard / finish arrangement
+ * @param stackIndex - Position within a stack of tokens sharing this cell
+ *                     (0 = first/only token, 1–3 = stacked on top)
  */
 export function getTokenWorldPosition(
   position: number,
   color: PlayerColor,
   tokenIndex: number,
+  stackIndex = 0,
 ): { x: number; y: number; z: number } {
-  // FINISHED TOKENS (position = -2)
+  const [sx, sz] = STACK_XZ[stackIndex] ?? [0, 0];
+  const sy = stackIndex * STACK_Y_STEP;
 
+  // FINISHED TOKENS (position = -2)
   if (position === -2) {
     const [offsetX, offsetZ] = FINISH_OFFSETS[tokenIndex] ?? [0, 0];
-    return { x: offsetX, y: 0.14, z: offsetZ };
+    return { x: offsetX, y: 0.14 + sy, z: offsetZ };
   }
 
   // YARD TOKENS (position = -1)
-
   if (position === -1) {
     const [row, col] = YARD[color][tokenIndex] ?? [7, 7];
     const { x, z } = rc(row, col);
-    return { x, y: 0.08, z };
+    // Yard slots are already spread out per token so no XZ stack offset needed,
+    // but we still raise Y if somehow two tokens share a yard slot.
+    return { x, y: 0.08 + sy, z };
   }
 
-  // HOME LANE TOKENS (local positions 51-55)
-
+  // HOME LANE TOKENS (local positions 51–55)
   if (position >= 51 && position <= 55) {
-    const step = position - 51; // 0 = first home cell, 4 = last home cell
+    const step = position - 51;
     const cell = HOME_LANES[color][step];
     if (!cell) {
       console.warn(`HOME_LANES[${color}][${step}] missing`);
-      return { x: 0, y: 0.1, z: 0 };
+      return { x: sx, y: 0.1 + sy, z: sz };
     }
     const { x, z } = rc(cell[0], cell[1]);
-    return { x, y: 0.1, z };
+    return { x: x + sx, y: 0.1 + sy, z: z + sz };
   }
 
-  // OUTER TRACK TOKENS (local positions 0-50)
-
+  // OUTER TRACK TOKENS (local positions 0–50)
   if (position >= 0 && position <= 50) {
-    // Convert local position to global ring index using player offset
     const ring = (position + ENTRY_OFFSET[color]) % 52;
     const cell = OUTER_TRACK[ring];
     if (!cell) {
       console.warn(
         `OUTER_TRACK[${ring}] missing (local ${position}, ${color})`,
       );
-      return { x: 0, y: 0.09, z: 0 };
+      return { x: sx, y: 0.09 + sy, z: sz };
     }
     const { x, z } = rc(cell[0], cell[1]);
-    return { x, y: 0.09, z };
+    return { x: x + sx, y: 0.09 + sy, z: z + sz };
   }
 
-  // FALLBACK (should never reach here)
-
+  // FALLBACK
   console.warn(`Unexpected position ${position} for ${color}`);
   const [row, col] = YARD[color][tokenIndex] ?? [7, 7];
   const { x, z } = rc(row, col);
   return { x, y: 0.08, z };
+}
+
+/**
+ * Build a map of  cellKey → stackIndex  for every active token.
+ *
+ * Called once per render in GameBoard before tokens are drawn.
+ * Returns a nested map:  color → tokenId → stackIndex
+ *
+ * Tokens in the yard (-1) each have their own fixed slot so they're
+ * never stacked, we skip them here.
+ * Finished tokens (-2) also have fixed offsets so we skip those too.
+ */
+export function computeStackIndices(
+  tokens: Record<
+    PlayerColor,
+    Array<{ id: number; position: number; isFinished: boolean }>
+  >,
+  colors: PlayerColor[],
+): Record<PlayerColor, Record<number, number>> {
+  // cellKey → list of { color, id } in arrival order
+  const cellMap = new Map<string, Array<{ color: PlayerColor; id: number }>>();
+
+  for (const color of colors) {
+    for (const token of tokens[color]) {
+      // Skip yard and finished, they have their own fixed offsets
+      if (token.position === -1 || token.isFinished) continue;
+
+      // For outer track we normalise to ring index so tokens from different
+      // players that physically share the same square get the same key.
+      let cellKey: string;
+      if (token.position >= 0 && token.position <= 50) {
+        const ring = (token.position + ENTRY_OFFSET[color]) % 52;
+        cellKey = `ring:${ring}`;
+      } else {
+        // Home lane positions are per-color so no cross-color sharing possible
+        cellKey = `${color}:${token.position}`;
+      }
+
+      if (!cellMap.has(cellKey)) cellMap.set(cellKey, []);
+      cellMap.get(cellKey)!.push({ color, id: token.id });
+    }
+  }
+
+  // Build result map initialised to 0
+  const result: Record<PlayerColor, Record<number, number>> = {
+    red: {},
+    green: {},
+    yellow: {},
+    blue: {},
+  };
+  for (const color of colors) {
+    for (const token of tokens[color]) {
+      result[color][token.id] = 0;
+    }
+  }
+
+  // Assign stack slots in the order tokens were added to each cell
+  for (const entries of cellMap.values()) {
+    entries.forEach(({ color, id }, slotIndex) => {
+      result[color][id] = slotIndex;
+    });
+  }
+
+  return result;
 }

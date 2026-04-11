@@ -29,6 +29,7 @@ export interface Player {
   type: PlayerType;
   /** Display name entered by player */
   name: string;
+  homeImage?: string; // Base64 or URL of custom image for home yard
 }
 
 /**

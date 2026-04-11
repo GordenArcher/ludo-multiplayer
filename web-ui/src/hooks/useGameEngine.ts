@@ -15,21 +15,6 @@ import {
 } from "../utils/gameLogic";
 import { MAX_CONSECUTIVE_SIXES } from "../constants/gameConstants";
 
-/**
- * STATUS VALUES
- *
- * "waiting"  — idle, waiting for the current player to roll
- * "rolling"  — dice animation playing (spinner shown)
- * "rolled"   — dice settled, face visible, waiting for move or auto-pass
- * "finished" — game over
- *
- * The missing "rolled" status was the root cause of the dice never showing.
- * Previously after rolling, state went straight back to "waiting", which:
- *   - Made canRoll true again while diceValue was briefly set (UI flicker)
- *   - Made the no-moves path clear diceValue instantly (player never saw number)
- *   - Made the SidePanel's displayedValue delay miss the window entirely
- */
-
 export const useGameEngine = (players: Player[]) => {
   const [gameState, setGameState] = useState<GameState>(() => ({
     players,
@@ -49,8 +34,17 @@ export const useGameEngine = (players: Player[]) => {
   }));
 
   const aiProcessingRef = useRef(false);
-  // Auto-pass timer ref so we can cancel if the player moves first
   const autoPassTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * aiTurnTrigger: a counter incremented each time an AI turn must begin.
+   *
+   * We cannot rely on [shouldAIPlay, currentPlayer?.color] as the effect
+   * dependency because when the same AI player earns an extra turn (rolled 6),
+   * neither value changes, so React skips the effect entirely and the game
+   * freezes. Using a counter guarantees the effect always re-runs.
+   */
+  const [aiTurnTrigger, setAiTurnTrigger] = useState(0);
 
   const currentPlayer = useMemo(
     () =>
@@ -63,7 +57,6 @@ export const useGameEngine = (players: Player[]) => {
   const isHumanTurn = useMemo(() => {
     if (!currentPlayer) return false;
     if (gameState.winner) return false;
-    // Allow interaction in both "waiting" (pre-roll) and "rolled" (picking a token)
     if (gameState.status !== "waiting" && gameState.status !== "rolled")
       return false;
     return currentPlayer.type === "human";
@@ -87,6 +80,12 @@ export const useGameEngine = (players: Player[]) => {
     return currentPlayer.type === "ai";
   }, [currentPlayer, gameState.winner, gameState.status]);
 
+  // Bridge: fires when a different AI player's turn starts (color/index changes)
+  useEffect(() => {
+    if (!shouldAIPlay) return;
+    setAiTurnTrigger((n) => n + 1);
+  }, [shouldAIPlay]);
+
   // Human: Roll Dice
   const rollDice = useCallback(async (): Promise<number | null> => {
     if (gameState.status !== "waiting") return null;
@@ -96,38 +95,27 @@ export const useGameEngine = (players: Player[]) => {
 
     const value = Math.floor(Math.random() * 6) + 1;
 
-    // Phase 1: spinner
-    setGameState((prev) => ({
-      ...prev,
-      diceValue: value,
-      status: "rolling",
-    }));
-
+    setGameState((prev) => ({ ...prev, diceValue: value, status: "rolling" }));
     await new Promise((r) => setTimeout(r, 800));
 
-    // Phase 2: settle, ALWAYS keep diceValue so the face shows
     setGameState((prev) => {
       const newConsec = value === 6 ? prev.consecutiveSixes + 1 : 0;
       const isPenalty = newConsec >= MAX_CONSECUTIVE_SIXES;
       const color = prev.players[prev.currentPlayerIndex].color;
       const moves = isPenalty ? [] : getValidMoves(value, color, prev.tokens);
-
       return {
         ...prev,
-        diceValue: value, // keep visible, cleared by move or auto-pass
+        diceValue: value,
         consecutiveSixes: newConsec,
         validMoves: moves,
-        status: "rolled", // new status: dice face showing
+        status: "rolled",
       };
     });
 
-    // Phase 3: schedule auto-pass after 1200ms if no moves
-    // (If player has moves and clicks a token, makeMove cancels this timer)
     autoPassTimerRef.current = setTimeout(() => {
       setGameState((prev) => {
         if (prev.status !== "rolled") return prev;
-        if (prev.validMoves.length > 0) return prev; // player has moves, don't auto-pass
-
+        if (prev.validMoves.length > 0) return prev;
         const isPenalty = prev.consecutiveSixes >= MAX_CONSECUTIVE_SIXES;
         return {
           ...prev,
@@ -153,7 +141,6 @@ export const useGameEngine = (players: Player[]) => {
       if (!gameState.diceValue) return { success: false, extraTurn: false };
       if (!currentPlayer) return { success: false, extraTurn: false };
 
-      // Cancel auto-pass, player is making a move
       if (autoPassTimerRef.current) {
         clearTimeout(autoPassTimerRef.current);
         autoPassTimerRef.current = null;
@@ -239,50 +226,50 @@ export const useGameEngine = (players: Player[]) => {
     });
   }, [players]);
 
-  // AI Turn Handler
   /**
-   * Every AI turn follows this exact sequence:
+   * AI Turn Handler
    *
-   *   600ms   thinking pause
-   *   → status="rolling", diceValue=value   (spinner)
-   *   900ms   spin
-   *   → status="rolled",  diceValue=value   (face visible, player reads number)
-   *   900ms   show pause
-   *   → [penalty]  700ms extra → clear diceValue → advance turn
-   *   → [no moves] 700ms extra → clear diceValue → advance turn
-   *   → [move]     400ms deliberate pause → executeMove (keep diceValue)
-   *   700ms   result visible (token has moved, dice face still showing)
-   *   → commit nextState with diceValue=null, status="waiting"
-   *   → aiProcessingRef=false → shouldAIPlay re-fires for extra turn if earned
+   * KEY DESIGN RULE: executeMove() is the single source of truth for
+   * currentPlayerIndex and consecutiveSixes after a move. We do NOT override
+   * those fields, we just check whether executeMove kept the same index
+   * (extra turn) or advanced it (normal turn end).
+   *
+   * For the extra-turn case we call setAiTurnTrigger directly instead of
+   * relying on shouldAIPlay re-evaluating, because when the same player keeps
+   * their turn, currentPlayer.color doesn't change so the bridge effect above
+   * would never re-fire.
    */
   useEffect(() => {
-    if (!shouldAIPlay) return;
+    if (aiTurnTrigger === 0) return;
     if (!currentPlayer) return;
+    if (currentPlayer.type !== "ai") return;
+    if (gameState.winner) return;
 
     aiProcessingRef.current = true;
     const color = currentPlayer.color;
+    const playerIndex = gameState.currentPlayerIndex;
 
     const playAITurn = async () => {
-      // Thinking pause
+      // 1. Thinking pause
       await new Promise((r) => setTimeout(r, 600));
 
       const value = Math.floor(Math.random() * 6) + 1;
-      console.log("AI rolled:", value);
+      console.log(`AI (${color}) rolled:`, value);
 
-      // Snapshot fresh state
+      // Snapshot consecutiveSixes and tokens from current state
       let snapConsec = 0;
       let snapTokens = {} as Record<PlayerColor, Token[]>;
       setGameState((prev) => {
         snapConsec = prev.consecutiveSixes;
         snapTokens = prev.tokens;
-        return prev;
+        return prev; // no change, just reading
       });
       await new Promise((r) => setTimeout(r, 0));
 
       const newConsec = value === 6 ? snapConsec + 1 : 0;
       const isPenalty = newConsec >= MAX_CONSECUTIVE_SIXES;
 
-      // Phase 1: spinner
+      // 2. Spinner
       setGameState((prev) => ({
         ...prev,
         diceValue: value,
@@ -290,7 +277,7 @@ export const useGameEngine = (players: Player[]) => {
       }));
       await new Promise((r) => setTimeout(r, 900));
 
-      // Phase 2: face visible
+      // 3. Face visible
       setGameState((prev) => ({
         ...prev,
         status: "rolled",
@@ -298,7 +285,7 @@ export const useGameEngine = (players: Player[]) => {
       }));
       await new Promise((r) => setTimeout(r, 900));
 
-      // Penalty
+      // 4a. Penalty, lose turn
       if (isPenalty) {
         await new Promise((r) => setTimeout(r, 700));
         aiProcessingRef.current = false;
@@ -314,9 +301,9 @@ export const useGameEngine = (players: Player[]) => {
       }
 
       const moves = getValidMoves(value, color, snapTokens);
-      console.log("AI valid moves:", moves.length);
+      console.log(`AI (${color}) valid moves:`, moves.length);
 
-      // No moves
+      // 4b. No moves, pass turn
       if (moves.length === 0) {
         await new Promise((r) => setTimeout(r, 700));
         aiProcessingRef.current = false;
@@ -331,63 +318,76 @@ export const useGameEngine = (players: Player[]) => {
         return;
       }
 
+      // 4c. Execute move
       const move = chooseBestMove(moves, snapTokens, color);
-      console.log("AI moving:", move);
-
+      console.log(`AI (${color}) moving:`, move);
       await new Promise((r) => setTimeout(r, 400));
 
-      // Phase 3: execute move, keep diceValue visible
-      let nextState: GameState | null = null;
+      // Build the exact state executeMove expects:
+      // - diceValue set to what was rolled
+      // - consecutiveSixes set to the post-roll value (executeMove does NOT re-increment)
+      // - validMoves populated so the legality check passes
+      const stateForMove: GameState = {
+        ...gameState, // base: current live state (has correct tokens, players, index)
+        tokens: snapTokens,
+        diceValue: value,
+        consecutiveSixes: newConsec,
+        validMoves: moves,
+        status: "rolled",
+      };
 
-      setGameState((prev) => {
-        const stateForMove: GameState = {
-          ...prev,
-          diceValue: value,
-          consecutiveSixes: newConsec,
-          validMoves: moves,
-        };
-        const result = executeMove(
-          stateForMove,
-          move.tokenId,
-          move.newPosition,
-        );
-        if (!result) {
-          nextState = null;
-          return {
-            ...prev,
-            diceValue: null,
-            status: "waiting",
-            currentPlayerIndex:
-              (prev.currentPlayerIndex + 1) % prev.players.length,
-          };
-        }
-        nextState = result;
-        // Patch diceValue back, cleared after result pause
-        return { ...result, diceValue: value, status: "rolled" };
-      });
-
-      await new Promise((r) => setTimeout(r, 0));
+      const nextState = executeMove(
+        stateForMove,
+        move.tokenId,
+        move.newPosition,
+      );
 
       if (!nextState) {
+        console.warn("AI executeMove returned null — passing turn");
         aiProcessingRef.current = false;
+        setGameState((prev) => ({
+          ...prev,
+          diceValue: null,
+          status: "waiting",
+          currentPlayerIndex:
+            (prev.currentPlayerIndex + 1) % prev.players.length,
+        }));
         return;
       }
 
-      // Phase 4: result visible after move
+      // Show token in new position with dice still visible
+      setGameState({ ...nextState, diceValue: value, status: "rolled" });
+
+      // 5. Result visible pause
       await new Promise((r) => setTimeout(r, 700));
 
-      // CRITICAL: spread nextState (not prev) to preserve tokens + currentPlayerIndex
+      /**
+       * executeMove already set currentPlayerIndex correctly:
+       *   - same index  → extra turn (rolled 6 or captured)
+       *   - next index  → normal turn end
+       *
+       * We just commit its decision. For the extra-turn case we directly
+       * increment aiTurnTrigger so the effect re-fires even though color
+       * hasn't changed.
+       */
+      const gotExtraTurn = nextState.currentPlayerIndex === playerIndex;
+      console.log(`AI (${color}) extra turn:`, gotExtraTurn);
+
       aiProcessingRef.current = false;
       setGameState({
-        ...nextState!,
+        ...nextState,
         diceValue: null,
-        status: nextState!.winner ? "finished" : "waiting",
+        status: nextState.winner ? "finished" : "waiting",
       });
+
+      if (gotExtraTurn && !nextState.winner) {
+        setAiTurnTrigger((n) => n + 1);
+      }
     };
 
     playAITurn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldAIPlay, currentPlayer?.color]);
+  }, [aiTurnTrigger]);
 
   return {
     gameState,

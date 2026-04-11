@@ -1,5 +1,14 @@
 import React, { useState } from "react";
-import { Users, Bot, User, Play, Gamepad2 } from "lucide-react";
+import {
+  Users,
+  Bot,
+  User,
+  Play,
+  Gamepad2,
+  Image as ImageIcon,
+  X,
+  Upload,
+} from "lucide-react";
 import type { PlayerColor, PlayerType, GameConfig } from "../../types/game";
 import PlayerCard from "./PlayerCard";
 
@@ -12,7 +21,7 @@ const PLAYER_COLORS: PlayerColor[] = ["red", "green", "yellow", "blue"];
 const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
   const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(2);
   const [players, setPlayers] = useState<
-    { color: PlayerColor; type: PlayerType; name: string }[]
+    { color: PlayerColor; type: PlayerType; name: string; homeImage?: string }[]
   >([
     { color: "red", type: "human", name: "" },
     { color: "green", type: "human", name: "" },
@@ -22,7 +31,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
     setPlayerCount(count);
     const newPlayers = PLAYER_COLORS.slice(0, count).map((color, index) => ({
       color,
-      type: "human", // Start all as human
+      type: "human",
       name: "",
     }));
     setPlayers(newPlayers);
@@ -32,17 +41,11 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
     const updated = [...players];
     const currentAICount = updated.filter((p) => p.type === "ai").length;
 
-    // If trying to set AI
     if (type === "ai") {
-      // Max 1 AI allowed
-      if (currentAICount >= 1) {
-        return; // Can't have more than one AI
-      }
+      if (currentAICount >= 1) return;
       updated[index].type = "ai";
-      updated[index].name = ""; // Clear name for AI
-    }
-    // If setting to human
-    else {
+      updated[index].name = "";
+    } else {
       updated[index].type = "human";
     }
 
@@ -55,28 +58,46 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
     setPlayers(updated);
   };
 
+  const handleImageUpload = (index: number, file: File) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const updated = [...players];
+      updated[index].homeImage = reader.result as string;
+      setPlayers(updated);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = (index: number) => {
+    const updated = [...players];
+    updated[index].homeImage = undefined;
+    setPlayers(updated);
+  };
+
   const handleStart = () => {
     const config: GameConfig = {
       players: players.map((p) => ({
-        ...p,
+        color: p.color,
+        type: p.type,
         name:
           p.type === "ai"
             ? "AI Player"
             : p.name.trim() || `${p.color.toUpperCase()} Player`,
+        homeImage: p.homeImage,
       })),
       totalPlayers: playerCount,
     };
     onStartGame(config);
   };
 
-  // Check if all humans have names and there's at least one human
   const hasHuman = players.some((p) => p.type === "human");
   const allHumansHaveNames = players
     .filter((p) => p.type === "human")
     .every((p) => p.name.trim() !== "");
 
   const canStart = hasHuman && allHumansHaveNames;
-
   const aiCount = players.filter((p) => p.type === "ai").length;
   const aiDisabled = aiCount >= 1;
 
@@ -121,17 +142,61 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
             const isAIDisabled = aiDisabled && player.type !== "ai";
 
             return (
-              <PlayerCard
-                key={player.color}
-                color={player.color}
-                type={player.type}
-                name={player.name}
-                onTypeChange={(type) => handleTypeChange(index, type)}
-                onNameChange={(name) => handleNameChange(index, name)}
-                isActive={index < playerCount}
-                isAIDisabled={isAIDisabled}
-                aiCount={aiCount}
-              />
+              <div key={player.color} className="space-y-2">
+                <PlayerCard
+                  color={player.color}
+                  type={player.type}
+                  name={player.name}
+                  onTypeChange={(type) => handleTypeChange(index, type)}
+                  onNameChange={(name) => handleNameChange(index, name)}
+                  isActive={index < playerCount}
+                  isAIDisabled={isAIDisabled}
+                  aiCount={aiCount}
+                />
+
+                {index < playerCount && (
+                  <div className="bg-white/5 rounded-lg p-2 border border-white/10">
+                    {player.homeImage ? (
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={player.homeImage}
+                          alt={`${player.color} home`}
+                          className="w-10 h-10 rounded object-cover border border-white/20"
+                        />
+                        <span className="text-white/60 text-xs flex-1">
+                          Custom image
+                        </span>
+                        <button
+                          onClick={() => removeImage(index)}
+                          className="p-1 rounded-full bg-red-500/20 hover:bg-red-500/40 transition"
+                        >
+                          <X className="w-3 h-3 text-red-400" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-white/40 text-xs flex items-center gap-1">
+                          <ImageIcon className="w-3 h-3" />
+                          Custom home image (optional)
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageUpload(index, file);
+                          }}
+                        />
+                        <div className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition text-white/60 text-xs flex items-center gap-1">
+                          <Upload className="w-3 h-3" />
+                          Upload
+                        </div>
+                      </label>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -158,6 +223,11 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
           <div className="flex items-center gap-1">
             <Bot className="w-3 h-3" />
             <span>Maximum 1 AI allowed</span>
+          </div>
+          <div className="w-px h-3 bg-white/20" />
+          <div className="flex items-center gap-1">
+            <ImageIcon className="w-3 h-3" />
+            <span>Upload custom home images</span>
           </div>
         </div>
       </div>
