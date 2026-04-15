@@ -204,7 +204,7 @@ const GameBoard: React.FC<{
           <Canvas
             shadows
             camera={{ position: cameraPosition, fov: cameraFov }}
-            gl={{ antialias: true, powerPrecision: "high-performance" }}
+            gl={{ antialias: true, powerPreference: "high-performance" }}
             style={{ touchAction: isMobile ? "none" : "auto" }}
           >
             <color attach="background" args={["#030100"]} />
@@ -243,8 +243,6 @@ const GameBoard: React.FC<{
               panSpeed={controlSettings.panSpeed}
               target={[0, 0, 0]}
               makeDefault
-              touchRotate={true}
-              touchZoom={true}
             />
           </Canvas>
         </div>
