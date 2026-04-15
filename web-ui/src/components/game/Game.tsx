@@ -21,6 +21,26 @@ import { sounds } from "../../utils/sounds";
 import QuitGameModal from "../modals/quitGameModal";
 import RestoreGameModal from "../modals/restoregamemodal";
 
+// Helper to detect mobile screen size
+const useScreenSize = () => {
+  const [isMobile, setIsMobile] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 1024,
+  );
+
+  useEffect(() => {
+    const checkScreen = () => {
+      setScreenWidth(window.innerWidth);
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkScreen();
+    window.addEventListener("resize", checkScreen);
+    return () => window.removeEventListener("resize", checkScreen);
+  }, []);
+
+  return { isMobile, screenWidth };
+};
+
 const GameBoard: React.FC<{
   config: GameConfig;
   onBackToMenu: () => void;
@@ -34,13 +54,51 @@ const GameBoard: React.FC<{
     rollDice,
     makeMove,
     selectToken,
-    // shouldAIPlay,
   } = useGameEngine(config.players);
 
   const [soundEnabled] = useState(true);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const { isMobile, screenWidth } = useScreenSize();
 
   const isRolling = gameState.status === "rolling";
+  const isSixRolled =
+    gameState.diceValue === 6 && gameState.status === "waiting";
+
+  // Responsive camera settings based on screen width
+  const getCameraSettings = () => {
+    if (screenWidth < 640) {
+      return { position: [0, 18, 12] as [number, number, number], fov: 55 };
+    } else if (screenWidth < 1024) {
+      return { position: [0, 16, 12] as [number, number, number], fov: 48 };
+    }
+    return { position: [0, 14, 12] as [number, number, number], fov: 40 };
+  };
+
+  const { position: cameraPosition, fov: cameraFov } = getCameraSettings();
+
+  // Responsive OrbitControls settings
+  const getControlSettings = () => {
+    if (isMobile) {
+      return {
+        minDistance: 10,
+        maxDistance: 20,
+        rotateSpeed: 0.5,
+        zoomSpeed: 1.0,
+        panSpeed: 0.5,
+        enablePan: false,
+      };
+    }
+    return {
+      minDistance: 8,
+      maxDistance: 22,
+      rotateSpeed: 0.8,
+      zoomSpeed: 1.2,
+      panSpeed: 0.8,
+      enablePan: true,
+    };
+  };
+
+  const controlSettings = getControlSettings();
 
   useEffect(() => {
     if (
@@ -127,6 +185,7 @@ const GameBoard: React.FC<{
             isInteractive={canInteract}
             isSelected={isSelected}
             isValidMove={isValidMove && isCurrentPlayerTurn && isHumanTurn}
+            isSixRolled={isSixRolled}
             onClick={() => {
               if (canInteract) handleTokenClick(token.id);
             }}
@@ -144,8 +203,9 @@ const GameBoard: React.FC<{
         <div className="absolute inset-0">
           <Canvas
             shadows
-            camera={{ position: [0, 14, 12], fov: 40 }}
-            gl={{ antialias: true, powerPreference: "high-performance" }}
+            camera={{ position: cameraPosition, fov: cameraFov }}
+            gl={{ antialias: true, powerPrecision: "high-performance" }}
+            style={{ touchAction: isMobile ? "none" : "auto" }}
           >
             <color attach="background" args={["#030100"]} />
             <ambientLight intensity={0.55} />
@@ -170,18 +230,21 @@ const GameBoard: React.FC<{
             {renderTokens()}
 
             <OrbitControls
-              enableZoom
-              enablePan
-              enableRotate
-              minDistance={8}
-              maxDistance={22}
+              enableZoom={true}
+              enablePan={controlSettings.enablePan}
+              enableRotate={true}
+              minDistance={controlSettings.minDistance}
+              maxDistance={controlSettings.maxDistance}
               maxPolarAngle={Math.PI / 2.2}
               minPolarAngle={Math.PI / 5}
               dampingFactor={0.06}
-              rotateSpeed={0.8}
-              zoomSpeed={1.2}
+              rotateSpeed={controlSettings.rotateSpeed}
+              zoomSpeed={controlSettings.zoomSpeed}
+              panSpeed={controlSettings.panSpeed}
               target={[0, 0, 0]}
               makeDefault
+              touchRotate={true}
+              touchZoom={true}
             />
           </Canvas>
         </div>

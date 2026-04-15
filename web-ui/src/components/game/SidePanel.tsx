@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Gamepad2,
   Trophy,
@@ -130,12 +130,26 @@ const SidePanel: React.FC<SidePanelProps> = ({
   isRolling,
   onQuit,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
   const { players, tokens, winner, status } = gameState;
 
   const isSpinning = isRolling || status === "rolling";
   const showDiceFace = !isSpinning && diceValue !== null && !winner;
+
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    // Collapse by default on mobile
+    return window.innerWidth < 768;
+  });
+
+  // Also add resize listener
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768 && !isCollapsed) {
+        setIsCollapsed(true);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isCollapsed]);
 
   const canRoll =
     isHumanTurn &&

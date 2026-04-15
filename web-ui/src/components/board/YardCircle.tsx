@@ -52,16 +52,27 @@ const YardCircle: React.FC<YardCircleProps> = ({
     };
   }, [homeImage, color]);
 
-  // The yard covers from row 0-5 and col 0-5 (6x6 area)
-  // Center of red yard is at row 2.5, col 2.5
-  // The yard width is approximately 6 * CELL_SIZE = 6 * 0.88 = 5.28 units
   const yardSize = 5.2;
+
+  // Helper to get contrasting text/label color
+  const getContrastColor = (hexColor: string) => {
+    // Simple contrast, white for dark colors, black for light
+    const darkColors = ["#dc2626", "#16a34a", "#2563eb", "#ca8a04"];
+    return darkColors.includes(hexColor) ? "#ffffff" : "#000000";
+  };
+
+  const labelColor = getContrastColor(color);
 
   return (
     <group position={[x, 0.02, z]}>
+      <mesh receiveShadow castShadow>
+        <boxGeometry args={[yardSize, 0.05, yardSize]} />
+        <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
+      </mesh>
+
       {homeImage && textureLoaded && textureRef.current && (
         <mesh
-          position={[0, 0.04, 0]}
+          position={[0, 0.045, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
           receiveShadow
         >
@@ -74,43 +85,66 @@ const YardCircle: React.FC<YardCircleProps> = ({
         </mesh>
       )}
 
-      {!homeImage && (
-        <mesh receiveShadow castShadow>
-          <boxGeometry args={[yardSize, 0.05, yardSize]} />
-          <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
-        </mesh>
-      )}
-
-      <mesh position={[0, 0.09, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.1, 1.36, 64]} />
+      <mesh position={[0, 0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.3, 1.5, 64]} />
         <meshStandardMaterial
-          color="#c49a28"
-          metalness={0.55}
-          roughness={0.35}
+          color="#d4af37"
+          metalness={0.7}
+          roughness={0.3}
+          emissive="#b8860b"
+          emissiveIntensity={0.15}
         />
       </mesh>
 
-      <mesh position={[0, 0.095, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[1.1, 64]} />
-        <meshStandardMaterial color="#f9f0e0" roughness={0.5} />
+      <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[1.25, 64]} />
+        <meshStandardMaterial
+          color="#fef3c7"
+          roughness={0.3}
+          metalness={0.1}
+          emissive="#fde047"
+          emissiveIntensity={0.1}
+        />
       </mesh>
 
-      {([-0.52, 0.52] as const).flatMap((ox) =>
-        ([-0.52, 0.52] as const).map((oz) => (
-          <mesh
-            key={`${ox}${oz}`}
-            position={[ox, 0.12, oz]}
-            rotation={[-Math.PI / 2, 0, 0]}
-          >
-            <circleGeometry args={[0.26, 36]} />
-            <meshStandardMaterial
-              color={color}
-              emissive={emissive}
-              emissiveIntensity={0.5}
-              roughness={0.25}
-              metalness={0.2}
-            />
-          </mesh>
+      {([-0.65, 0.65] as const).flatMap((ox) =>
+        ([-0.65, 0.65] as const).map((oz) => (
+          <group key={`${ox}${oz}`}>
+            <mesh position={[ox, 0.1, oz]} rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[0.32, 48]} />
+              <meshStandardMaterial
+                color="#d4af37"
+                emissive="#fbbf24"
+                emissiveIntensity={0.3}
+                metalness={0.6}
+                roughness={0.2}
+              />
+            </mesh>
+
+            <mesh position={[ox, 0.11, oz]} rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[0.26, 48]} />
+              <meshStandardMaterial
+                color={color}
+                emissive={emissive}
+                emissiveIntensity={0.4}
+                roughness={0.2}
+                metalness={0.3}
+              />
+            </mesh>
+
+            <mesh position={[ox, 0.115, oz]} rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[0.18, 32]} />
+              <meshStandardMaterial
+                color={labelColor}
+                emissive={labelColor}
+                emissiveIntensity={0.15}
+                roughness={0.1}
+                metalness={0.05}
+                transparent
+                opacity={0.6}
+              />
+            </mesh>
+          </group>
         )),
       )}
     </group>

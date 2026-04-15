@@ -52,3 +52,18 @@
 }
 
 @import "tailwindcss";
+
+canvas {
+    touch-action: pinch-zoom;
+    cursor: grab;
+}
+
+canvas:active {
+    cursor: grabbing;
+}
+
+@media (max-width: 768px) {
+    canvas {
+        touch-action: none;
+    }
+}

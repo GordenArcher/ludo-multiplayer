@@ -10,16 +10,15 @@ interface TokenProps {
   position: number;
   isFinished: boolean;
   tokenIndex: number;
-  /** Slot within a stack of tokens sharing this cell (0 = base, 1–3 = above) */
   stackIndex?: number;
   isInteractive: boolean;
   isSelected: boolean;
   isValidMove: boolean;
   onClick: () => void;
+  isSixRolled?: boolean;
 }
 
 const Token: React.FC<TokenProps> = ({
-  // tokenId,
   color,
   position,
   isFinished,
@@ -29,9 +28,22 @@ const Token: React.FC<TokenProps> = ({
   isSelected,
   isValidMove,
   onClick,
+  isSixRolled = false,
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
+  const [blinkState, setBlinkState] = useState(true);
+
+  // Blinking effect for valid move when 6 is rolled
+  useEffect(() => {
+    if (!isValidMove || !isSixRolled) return;
+
+    const interval = setInterval(() => {
+      setBlinkState((prev) => !prev);
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [isValidMove, isSixRolled]);
 
   useEffect(() => {
     if (groupRef.current) {
@@ -67,6 +79,13 @@ const Token: React.FC<TokenProps> = ({
 
   const colors = themeColors[color];
   const scale = hovered && isInteractive ? 1.08 : isSelected ? 1.05 : 1;
+  const tokenHeight = 0.18;
+  const tokenRadius = 0.32;
+  const topRadius = 0.28;
+
+  // Blinking opacity for valid move indicator
+  const validMoveOpacity = blinkState && isSixRolled ? 1 : 0.8;
+  const validMoveScale = blinkState && isSixRolled ? 1.1 : 1;
 
   return (
     <group
@@ -76,7 +95,7 @@ const Token: React.FC<TokenProps> = ({
       onPointerOut={() => setHovered(false)}
     >
       {isSelected && (
-        <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, -0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.42, 0.58, 32]} />
           <meshStandardMaterial
             color="#fbbf24"
@@ -86,14 +105,26 @@ const Token: React.FC<TokenProps> = ({
           />
         </mesh>
       )}
+
       {isValidMove && !isSelected && (
-        <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh
+          position={[0, -0.02, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          scale={[validMoveScale, validMoveScale, 1]}
+        >
           <ringGeometry args={[0.38, 0.52, 32]} />
-          <meshStandardMaterial color="#4ade80" transparent opacity={0.8} />
+          <meshStandardMaterial
+            color="#4ade80"
+            transparent
+            opacity={validMoveOpacity}
+            emissive="#22c55e"
+            emissiveIntensity={isSixRolled ? 0.5 : 0.2}
+          />
         </mesh>
       )}
+
       <mesh scale={[scale, scale, scale]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.32, 0.32, 0.1, 48]} />
+        <cylinderGeometry args={[tokenRadius, tokenRadius, tokenHeight, 48]} />
         <meshStandardMaterial
           color={colors.primary}
           emissive={colors.glow}
@@ -102,21 +133,36 @@ const Token: React.FC<TokenProps> = ({
           metalness={0.3}
         />
       </mesh>
+
       <mesh
-        position={[0, 0.06, 0]}
+        position={[0, tokenHeight / 2 + 0.02, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         scale={[scale, scale, scale]}
       >
-        <circleGeometry args={[0.29, 48]} />
+        <circleGeometry args={[topRadius, 48]} />
         <meshStandardMaterial
           color={colors.primary}
           roughness={0.25}
           metalness={0.2}
         />
       </mesh>
+
+      <mesh
+        position={[0, -tokenHeight / 2 - 0.02, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[scale, scale, scale]}
+      >
+        <circleGeometry args={[tokenRadius - 0.03, 48]} />
+        <meshStandardMaterial
+          color={colors.glow}
+          roughness={0.4}
+          metalness={0.15}
+        />
+      </mesh>
+
       {hovered && isInteractive && (
         <mesh position={[0, 0, 0]}>
-          <sphereGeometry args={[0.48, 16, 16]} />
+          <sphereGeometry args={[0.52, 16, 16]} />
           <meshStandardMaterial
             color={colors.primary}
             transparent
@@ -126,8 +172,12 @@ const Token: React.FC<TokenProps> = ({
           />
         </mesh>
       )}
-      <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.36, 16]} />
+
+      <mesh
+        position={[0, -tokenHeight / 2 - 0.05, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <circleGeometry args={[0.4, 16]} />
         <meshStandardMaterial color="#000" transparent opacity={0.25} />
       </mesh>
     </group>
